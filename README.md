@@ -27,6 +27,7 @@ For new add-on projects, please use the
 
 ## Current Projects
 
+- [dashboard](./dashboard/README.md): OCM UI Dashboard.
 - [fleetconfig-controller](./fleetconfig-controller/README.md): Declarative orchestrator for OCM multi-clusters.
 
 ## Onboarding a New Project
