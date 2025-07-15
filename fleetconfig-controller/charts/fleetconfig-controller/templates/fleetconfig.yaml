@@ -60,5 +60,7 @@ spec:
         source:
           bundleVersion: {{ $.Values.fleetConfig.source.bundleVersion }}
           registry: {{ $.Values.fleetConfig.source.registry }}
+      addOns: {{- toYaml .addOns | nindent 8 }}
     {{- end }}
+  addOnConfigs: {{- toYaml .Values.fleetConfig.addOnConfigs | nindent 4 }}
 {{- end }}
