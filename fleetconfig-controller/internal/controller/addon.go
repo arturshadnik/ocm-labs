@@ -11,7 +11,6 @@ import (
 	kerrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonapi "open-cluster-management.io/api/client/addon/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -177,6 +176,8 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 	logger := log.FromContext(ctx)
 	logger.V(0).Info("deleteAddOns", "fleetconfig", fc.Name)
 
+	// a list of addons which may or may not need to be purged at the end (ClusterManagementAddOns needs to be deleted)
+	purgeList := make([]string, 0)
 	for _, addonName := range addons {
 		// get the addon template, so we can extract spec.addonName
 		addon, err := addonC.AddonV1alpha1().AddOnTemplates().Get(ctx, addonName, metav1.GetOptions{})
@@ -192,34 +193,34 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 			}
 		}
 
-		// get the addon name without a version suffix
-		unversionedName := addon.Spec.AddonName
+		// get the addon name without a version suffix, add it to purge list
+		purgeList = append(purgeList, addon.Spec.AddonName)
+		logger.V(0).Info("deleted addon", "AddOnTemplate", addonName)
+	}
 
-		// check if there are any remaining addon templates for the same addon (different versions of the same addon)
-		allAddons, err := addonC.AddonV1alpha1().AddOnTemplates().List(ctx, metav1.ListOptions{})
+	// check if there are any remaining addon templates for the same addon names as what was just deleted (different versions of the same addon)
+	allAddons, err := addonC.AddonV1alpha1().AddOnTemplates().List(ctx, metav1.ListOptions{})
+	if err != nil && !kerrs.IsNotFound(err) {
+		return fmt.Errorf("failed to clean up addons %v: %v", purgeList, err)
+	}
+	for _, a := range allAddons.Items {
+		// if other versions of the same addon remain, remove it from the purge list
+		purgeList = slices.DeleteFunc(purgeList, func(name string) bool {
+			return name == a.Spec.AddonName
+		})
+	}
+	// if list is empty, nothing else to do
+	if len(purgeList) == 0 {
+		return nil
+	}
+
+	// delete the ClusterManagementAddOn for any addon which has no active versions left
+	for _, name := range purgeList {
+		err = addonC.AddonV1alpha1().ClusterManagementAddOns().Delete(ctx, name, metav1.DeleteOptions{})
 		if err != nil && !kerrs.IsNotFound(err) {
-			return fmt.Errorf("failed to delete addon %s: %v", addonName, err)
+			return fmt.Errorf("failed to purge addon %s: %v", name, err)
 		}
-
-		remainingAddons := []addonv1alpha1.AddOnTemplate{}
-		for _, a := range allAddons.Items {
-			if a.Spec.AddonName == unversionedName {
-				remainingAddons = append(remainingAddons, a)
-			}
-		}
-		// if any remain, nothing else to do
-		if len(remainingAddons) > 0 {
-			logger.V(0).Info("deleted addon", "AddOnTemplate", addonName)
-			continue
-		}
-
-		// if none remain, delete the ClusterManagementAddOn
-		err = addonC.AddonV1alpha1().ClusterManagementAddOns().Delete(ctx, unversionedName, metav1.DeleteOptions{})
-		if err != nil && !kerrs.IsNotFound(err) {
-			return fmt.Errorf("failed to delete addon %s: %v", addonName, err)
-		}
-
-		logger.V(0).Info("deleted addon", "AddOnTemplate", addonName, "ClusterManagementAddOn", unversionedName)
+		logger.V(0).Info("purged addon", "ClusterManagementAddOn", name)
 	}
 
 	return nil
