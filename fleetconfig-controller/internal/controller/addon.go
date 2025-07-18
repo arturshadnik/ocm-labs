@@ -82,24 +82,27 @@ func handleAddonConfig(ctx context.Context, kClient client.Client, addonC *addon
 	}
 
 	// do deletes first, then creates.
-	if len(addonsToDelete) > 0 {
-		err = handleAddonDelete(ctx, addonC, fc, addonsToDelete)
-		if err != nil {
-			return err
-		}
+	err = handleAddonDelete(ctx, addonC, fc, addonsToDelete)
+	if err != nil {
+		return err
 	}
 
-	if len(addonsToCreate) > 0 {
-		err = handleAddonCreate(ctx, kClient, fc, addonsToCreate)
-		if err != nil {
-			return err
-		}
+	err = handleAddonCreate(ctx, kClient, fc, addonsToCreate)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.FleetConfig, addons []*v1alpha1.AddOnConfig) error {
+	if len(addons) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	logger.V(0).Info("createAddOns", "fleetconfig", fc.Name)
+
 	// look up CM
 	addonConfigMap := corev1.ConfigMap{}
 	err := kClient.Get(ctx, types.NamespacedName{Name: addonConfigMapName, Namespace: fc.Namespace}, &addonConfigMap)
@@ -124,7 +127,7 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 			fmt.Sprintf("--version=%s", a.Version),
 		}
 
-		switch checkManifestType(manifests) {
+		switch getManifestType(manifests) {
 		case manifestTypeHTTP:
 			// pass URL directly
 			args = append(args, fmt.Sprintf("--filename=%s", manifests))
@@ -154,18 +157,23 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 		if err != nil {
 			return fmt.Errorf("failed to create addon: %v, output: %s", err, string(out))
 		}
+		logger.V(0).Info("created addon", "AddOnTemplate", a.Name)
 	}
 	return nil
 }
 
-func checkManifestType(manifests string) manifestType {
-	if strings.HasPrefix(manifests, "http") || strings.HasPrefix(manifests, "https") {
+func getManifestType(manifests string) manifestType {
+	if strings.HasPrefix(manifests, "http://") || strings.HasPrefix(manifests, "https://") {
 		return manifestTypeHTTP
 	}
 	return manifestTypeRaw
 }
 
 func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1alpha1.FleetConfig, addons []string) error {
+	if len(addons) == 0 {
+		return nil
+	}
+
 	logger := log.FromContext(ctx)
 	logger.V(0).Info("deleteAddOns", "fleetconfig", fc.Name)
 
