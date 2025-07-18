@@ -8,9 +8,11 @@ import (
 
 // allowFleetConfigUpdate validates the FleetConfig update object to determine if the update action is valid.
 // Only the following updates are allowed:
+//   - spec.addOnConfig
 //   - spec.registrationAuth.*
 //   - spec.hub.clusterManager.source.*
 //   - spec.spokes[*].klusterlet.source.*
+//   - spec.spokes[*].addOns
 func allowFleetConfigUpdate(newObject *FleetConfig, oldObject *FleetConfig) error {
 
 	// Hub check
