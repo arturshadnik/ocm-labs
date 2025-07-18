@@ -214,7 +214,7 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 		return nil
 	}
 
-	// delete the ClusterManagementAddOn for any addon which has no active versions left
+	// delete the ClusterManagementAddOn for any addon which has no active templates left
 	for _, name := range purgeList {
 		err = addonC.AddonV1alpha1().ClusterManagementAddOns().Delete(ctx, name, metav1.DeleteOptions{})
 		if err != nil && !kerrs.IsNotFound(err) {
