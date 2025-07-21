@@ -179,24 +179,31 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 
 	// a list of addons which may or may not need to be purged at the end (ClusterManagementAddOns needs to be deleted)
 	purgeList := make([]string, 0)
+	errs := make([]error, 0)
 	for _, addonName := range addons {
 		// get the addon template, so we can extract spec.addonName
 		addon, err := addonC.AddonV1alpha1().AddOnTemplates().Get(ctx, addonName, metav1.GetOptions{})
 		if err != nil && !kerrs.IsNotFound(err) {
-			return fmt.Errorf("failed to delete addon %s: %v", addonName, err)
+			errs = append(errs, fmt.Errorf("failed to delete addon %s: %v", addonName, err))
+			continue
 		}
 
 		// delete the addon template
 		if addon != nil {
 			err = addonC.AddonV1alpha1().AddOnTemplates().Delete(ctx, addonName, metav1.DeleteOptions{})
 			if err != nil && !kerrs.IsNotFound(err) {
-				return fmt.Errorf("failed to delete addon %s: %v", addonName, err)
+				errs = append(errs, fmt.Errorf("failed to delete addon %s: %v", addonName, err))
+				continue
 			}
 		}
 
 		// get the addon name without a version suffix, add it to purge list
 		purgeList = append(purgeList, addon.Spec.AddonName)
 		logger.V(0).Info("deleted addon", "AddOnTemplate", addonName)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("one or more addons were not deleted: %v", errs)
 	}
 
 	// check if there are any remaining addon templates for the same addon names as what was just deleted (different versions of the same addon)
