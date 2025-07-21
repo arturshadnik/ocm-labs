@@ -18,6 +18,7 @@ import (
 	"github.com/open-cluster-management-io/lab/fleetconfig-controller/api/v1alpha1"
 	exec_utils "github.com/open-cluster-management-io/lab/fleetconfig-controller/internal/exec"
 	"github.com/open-cluster-management-io/lab/fleetconfig-controller/internal/file"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -110,12 +111,11 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 		cmName := fmt.Sprintf("%s-%s-%s", addonConfigMapNamePrefix, a.Name, a.Version)
 		err := kClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: fc.Namespace}, &cm)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "could not load configuration for add-on %s version %s", a.Name, a.Version)
 		}
 
 		// pull out manifests
-		data := cm.Data
-		manifests, ok := data[addonConfigMapManifestKey]
+		manifests, ok := cm.Data[addonConfigMapManifestKey]
 		if !ok {
 			return fmt.Errorf("no manifests found for add-on %s version %s", a.Name, a.Version)
 		}
