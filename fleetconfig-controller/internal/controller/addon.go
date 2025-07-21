@@ -202,10 +202,6 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 		logger.V(0).Info("deleted addon", "AddOnTemplate", addonName)
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("one or more addons were not deleted: %v", errs)
-	}
-
 	// check if there are any remaining addon templates for the same addon names as what was just deleted (different versions of the same addon)
 	allAddons, err := addonC.AddonV1alpha1().AddOnTemplates().List(ctx, metav1.ListOptions{})
 	if err != nil && !kerrs.IsNotFound(err) {
@@ -229,6 +225,12 @@ func handleAddonDelete(ctx context.Context, addonC *addonapi.Clientset, fc *v1al
 			return fmt.Errorf("failed to purge addon %s: %v", name, err)
 		}
 		logger.V(0).Info("purged addon", "ClusterManagementAddOn", name)
+	}
+
+	// only return aggregated errs after trying to delete ClusterManagementAddOns.
+	// this way, we dont accidentally leave any orphaned resources for addons which were successfully deleted.
+	if len(errs) > 0 {
+		return fmt.Errorf("one or more addons were not deleted: %v", errs)
 	}
 
 	return nil
