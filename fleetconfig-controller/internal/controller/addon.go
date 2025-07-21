@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	addonConfigMapName = "fleet-add-ons"
-	addon              = "addon"
-	create             = "create"
-	enable             = "enable"
-	disable            = "disable"
+	addonConfigMapNamePrefix  = "fleet-addon"
+	addonConfigMapManifestKey = "manifests"
+	addon                     = "addon"
+	create                    = "create"
+	enable                    = "enable"
+	disable                   = "disable"
 )
 
 type manifestType string
@@ -102,19 +103,19 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 	logger := log.FromContext(ctx)
 	logger.V(0).Info("createAddOns", "fleetconfig", fc.Name)
 
-	// look up CM
-	addonConfigMap := corev1.ConfigMap{}
-	err := kClient.Get(ctx, types.NamespacedName{Name: addonConfigMapName, Namespace: fc.Namespace}, &addonConfigMap)
-	if err != nil {
-		return err
-	}
-
-	data := addonConfigMap.Data
-
 	// set up array of clusteradm addon create commands
 	for _, a := range addons {
+		// look up manifests CM for the addon
+		cm := corev1.ConfigMap{}
+		cmName := fmt.Sprintf("%s-%s-%s", addonConfigMapNamePrefix, a.Name, a.Version)
+		err := kClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: fc.Namespace}, &cm)
+		if err != nil {
+			return err
+		}
+
 		// pull out manifests
-		manifests, ok := data[fmt.Sprintf("%s-%s", a.Name, a.Version)]
+		data := cm.Data
+		manifests, ok := data[addonConfigMapManifestKey]
 		if !ok {
 			return fmt.Errorf("no manifests found for add-on %s version %s", a.Name, a.Version)
 		}

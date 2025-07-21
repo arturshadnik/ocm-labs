@@ -1,18 +1,19 @@
 {{- if .Values.fleetConfig.addOnConfigs }}
-{{ $addOns := .Values.fleetConfig.addOnConfigs }}
+{{- $namespace := .Release.Namespace }}
+{{- range .Values.fleetConfig.addOnConfigs }}
+{{ $versionedName := printf "%s-%s" .name .version }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fleet-add-ons
-  namespace: {{ .Release.Namespace }}
+  name: fleet-addon-{{ $versionedName }}
+  namespace: {{ $namespace }}
 data:
-  {{- range $addOns }}
-  {{ $versionedName := printf "%s-%s" .name .version }}
   {{- if or (hasPrefix "http://" .manifests) (hasPrefix "https://" .manifests) }}
-  {{ $versionedName }}: {{ .manifests }}
+  manifests: {{ .manifests }}
   {{- else }}
-  {{ $versionedName }}: |-
+  manifests: |-
     {{- .manifests | nindent 4 }}
   {{- end }}
-  {{- end }}
+---
+{{- end }}
 {{- end }}
