@@ -9,9 +9,9 @@ metadata:
   namespace: {{ $namespace }}
 data:
   {{- if or (hasPrefix "http://" .manifests) (hasPrefix "https://" .manifests) }}
-  manifests: {{ .manifests }}
+  manifestsURL: {{ .manifests }}
   {{- else }}
-  manifests: |-
+  manifestsRaw: |-
     {{- .manifests | nindent 4 }}
   {{- end }}
 ---
