@@ -20,7 +20,6 @@ require (
 )
 
 require (
-	github.com/pkg/errors v0.9.1
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
