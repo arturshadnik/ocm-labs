@@ -58,7 +58,7 @@ func handleAddonConfig(ctx context.Context, kClient client.Client, addonC *addon
 	}
 
 	// Find addons that need to be created (present in requested, missing from created)
-	addonsToCreate := make([]*v1alpha1.AddOnConfig, 0)
+	addonsToCreate := make([]v1alpha1.AddOnConfig, 0)
 	for i, requestedName := range requestedVersionedNames {
 		if !slices.Contains(createdVersionedNames, requestedName) {
 			addonsToCreate = append(addonsToCreate, requestedAddOns[i])
@@ -87,7 +87,7 @@ func handleAddonConfig(ctx context.Context, kClient client.Client, addonC *addon
 	return nil
 }
 
-func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.FleetConfig, addons []*v1alpha1.AddOnConfig) error {
+func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.FleetConfig, addons []v1alpha1.AddOnConfig) error {
 	if len(addons) == 0 {
 		return nil
 	}
