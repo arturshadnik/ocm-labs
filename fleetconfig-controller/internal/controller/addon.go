@@ -22,13 +22,10 @@ import (
 )
 
 const (
-	addonConfigMapNamePrefix     = "fleet-addon"
-	addonConfigMapManifestRawKey = "manifestsRaw"
-	addonConfigMapManifestURLKey = "manifestsURL"
-	addon                        = "addon"
-	create                       = "create"
-	enable                       = "enable"
-	disable                      = "disable"
+	addon   = "addon"
+	create  = "create"
+	enable  = "enable"
+	disable = "disable"
 )
 
 func handleAddonConfig(ctx context.Context, kClient client.Client, addonC *addonapi.Clientset, fc *v1alpha1.FleetConfig) error {
@@ -102,7 +99,7 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 	for _, a := range addons {
 		// look up manifests CM for the addon
 		cm := corev1.ConfigMap{}
-		cmName := fmt.Sprintf("%s-%s-%s", addonConfigMapNamePrefix, a.Name, a.Version)
+		cmName := fmt.Sprintf("%s-%s-%s", v1alpha1.AddonConfigMapNamePrefix, a.Name, a.Version)
 		err := kClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: fc.Namespace}, &cm)
 		if err != nil {
 			return errors.Wrapf(err, "could not load configuration for add-on %s version %s", a.Name, a.Version)
@@ -116,30 +113,9 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 		}
 
 		// Extract manifest configuration from ConfigMap
-		manifestsRaw, hasRaw := cm.Data[addonConfigMapManifestRawKey]
-		manifestsURL, hasURL := cm.Data[addonConfigMapManifestURLKey]
-
-		// Validate manifest configuration
-		if !hasRaw && !hasURL {
-			return fmt.Errorf("no inline manifests or URL found for addon %s version %s", a.Name, a.Version)
-		}
-		if hasRaw && hasURL {
-			return fmt.Errorf("only 1 of inline manifests or URL can be set for addon %s version %s", a.Name, a.Version)
-		}
-
-		if hasURL {
-			url, err := url.Parse(manifestsURL)
-			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("failed to create addon %s version %s", a.Name, a.Version))
-			}
-			switch url.Scheme {
-			case "http", "https":
-				// pass URL directly
-				args = append(args, fmt.Sprintf("--filename=%s", manifestsURL))
-			default:
-				return fmt.Errorf("unsupported URL scheme %s for addon %s version %s", url.Scheme, a.Name, a.Version)
-			}
-		} else {
+		// validation was already done by the webhook, so simply check if raw manifests are provided and if not, use the URL.
+		manifestsRaw, ok := cm.Data[v1alpha1.AddonConfigMapManifestRawKey]
+		if ok {
 			// Write raw manifests to temporary file
 			filename, cleanup, err := file.TmpFile([]byte(manifestsRaw), "yaml")
 			if cleanup != nil {
@@ -149,6 +125,19 @@ func handleAddonCreate(ctx context.Context, kClient client.Client, fc *v1alpha1.
 				return err
 			}
 			args = append(args, fmt.Sprintf("--filename=%s", filename))
+		} else {
+			manifestsURL := cm.Data[v1alpha1.AddonConfigMapManifestURLKey]
+			url, err := url.Parse(manifestsURL)
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("failed to create addon %s version %s", a.Name, a.Version))
+			}
+			switch url.Scheme {
+			case "http", "https":
+				// pass URL directly
+				args = append(args, fmt.Sprintf("--filename=%s", manifestsURL))
+			default:
+				return fmt.Errorf("unsupported URL scheme %s for addon %s version %s. Must be one of %v", url.Scheme, a.Name, a.Version, v1alpha1.AllowedAddonURLSchemes)
+			}
 		}
 
 		if a.HubRegistration {
