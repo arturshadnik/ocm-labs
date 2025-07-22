@@ -269,6 +269,10 @@ func joinSpoke(ctx context.Context, kClient client.Client, spec v1alpha1.FleetCo
 		"--image-registry", spoke.Klusterlet.Source.Registry,
 	}
 
+	for k, v := range spoke.Klusterlet.Annotations {
+		joinArgs = append(joinArgs, fmt.Sprintf("--klusterlet-annotation=%s=%s", k, v))
+	}
+
 	// resources args
 	joinArgs = append(joinArgs, common.PrepareResources(spoke.Klusterlet.Resources)...)
 

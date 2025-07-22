@@ -21,6 +21,7 @@ import (
 
 	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
+	operatorv1 "open-cluster-management.io/api/operator/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 
 	"github.com/open-cluster-management-io/lab/fleetconfig-controller/api/v1alpha1"
@@ -29,13 +30,14 @@ import (
 )
 
 const (
-	fcNamespace         = "fleetconfig-system"
-	spokeSecretName     = "test-fleetconfig-kubeconfig"
-	devspaceLocal       = "local"
-	devspaceCI          = "ci"
-	kubeconfigSecretKey = "value"
-	hubAsSpokeName      = v1alpha1.ManagedClusterTypeHubAsSpoke
-	spokeName           = v1alpha1.ManagedClusterTypeSpoke
+	fcNamespace                = "fleetconfig-system"
+	spokeSecretName            = "test-fleetconfig-kubeconfig"
+	klusterletAnnotationPrefix = "agent.open-cluster-management.io"
+	devspaceLocal              = "local"
+	devspaceCI                 = "ci"
+	kubeconfigSecretKey        = "value"
+	hubAsSpokeName             = v1alpha1.ManagedClusterTypeHubAsSpoke
+	spokeName                  = v1alpha1.ManagedClusterTypeSpoke
 )
 
 var (
@@ -45,6 +47,7 @@ var (
 
 	// global test variables
 	fleetConfigNN = ktypes.NamespacedName{Name: "fleetconfig", Namespace: fcNamespace}
+	klusterletNN  = ktypes.NamespacedName{Name: "klusterlet"}
 )
 
 // E2EContext holds all the test-specific state.
@@ -121,6 +124,7 @@ func setupTestEnvironment() *E2EContext {
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(clusterv1beta1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(clusterv1beta2.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(operatorv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(workv1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	By("creating a kubernetes client for the hub cluster")
@@ -327,5 +331,17 @@ func assertNamespace(ctx context.Context, cluster string, kClient client.Client)
 		return errors.New("namespace not found")
 	}
 	utils.Info("Namespace %s is now created in cluster '%s'", namespaceName, cluster)
+	return nil
+}
+
+func assertKlusterletAnnotation(klusterlet *operatorv1.Klusterlet, key, expectedValue string) error {
+	expectedKey := fmt.Sprintf("%s/%s", klusterletAnnotationPrefix, key)
+	v, ok := klusterlet.Spec.RegistrationConfiguration.ClusterAnnotations[expectedKey]
+	if !ok {
+		return fmt.Errorf("expected annotation, %s, not found", expectedKey)
+	}
+	if v != expectedValue {
+		return fmt.Errorf("expected %s=%s, got %s", expectedKey, expectedValue, v)
+	}
 	return nil
 }
