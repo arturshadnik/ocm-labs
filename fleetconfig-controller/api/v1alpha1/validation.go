@@ -91,7 +91,7 @@ func validateAddonConfigs(ctx context.Context, client client.Client, newObject *
 		if hasURL {
 			url, err := url.Parse(manifestsURL)
 			if err != nil {
-				errs = append(errs, field.Invalid(field.NewPath("addOnConfigs").Index(i), a.Name, fmt.Sprintf("invalid URL %s for addon %s version %s. %v", manifestsURL, a.Name, a.Version, err.Error())))
+				errs = append(errs, field.Invalid(field.NewPath("addOnConfigs").Index(i), a.Name, fmt.Sprintf("invalid URL '%s' for addon %s version %s. %v", manifestsURL, a.Name, a.Version, err.Error())))
 				continue
 			}
 			if !slices.Contains(AllowedAddonURLSchemes, url.Scheme) {
