@@ -70,6 +70,7 @@ func (d *FleetConfigCustomDefaulter) Default(_ context.Context, obj runtime.Obje
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-fleetconfig-open-cluster-management-io-v1alpha1-fleetconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=fleetconfig.open-cluster-management.io,resources=fleetconfigs,verbs=create;update;delete,versions=v1alpha1,name=vfleetconfig-v1alpha1.open-cluster-management.io,admissionReviewVersions=v1
+// +kubebuilder:object:generate=false
 
 // FleetConfigCustomValidator struct is responsible for validating the FleetConfig resource
 // when it is created, updated, or deleted.
