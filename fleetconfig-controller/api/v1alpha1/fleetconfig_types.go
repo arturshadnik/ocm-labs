@@ -367,13 +367,18 @@ type AddOn struct {
 
 // JoinType returns a status condition type indicating that a particular Spoke cluster has joined the Hub.
 func (s *Spoke) JoinType() string {
-	return fmt.Sprintf("spoke-cluster-%s-joined", s.conditionName())
+	return fmt.Sprintf("spoke-cluster-%s-joined", s.conditionName(42)) // 63 - 21
 }
 
-func (s *Spoke) conditionName() string {
+// AddonEnabledType returns a status condition type indicating that a particular Spoke cluster has joined the Hub.
+func (s *Spoke) AddonEnabledType() string {
+	return fmt.Sprintf("spoke-cluster-%s-addons-enabled", s.conditionName(34)) // 63 - 29
+}
+
+func (s *Spoke) conditionName(c int) string {
 	name := s.Name
-	if len(name) > 42 {
-		name = name[:42] // account for extra 21 chars in the condition type (max. total of 63)
+	if len(name) > c {
+		name = name[:c] // account for extra c chars in the condition type (max. total of 63)
 	}
 	return name
 }
