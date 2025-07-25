@@ -391,6 +391,11 @@ type JoinedSpoke struct {
 	// +kubebuilder:default:=true
 	// +optional
 	PurgeKlusterletOperator bool `json:"purgeKlusterletOperator,omitempty"`
+
+	// EnabledAddons is the list of addons that are currently enabled for the cluster.
+	// +kubebuilder:default:={}
+	// +optional
+	EnabledAddons []string `json:"enabledAddons,omitempty"`
 }
 
 // UnjoinType returns a status condition type indicating that a particular Spoke cluster has been removed from the Hub.
