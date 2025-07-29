@@ -56,11 +56,13 @@ var _ = Describe("fleetconfig", Label("fleetconfig"), Ordered, func() {
 
 	// Tests FleetConfig operations with ResourceCleanup feature gate enabled, verifying:
 	// 1. Cluster joining (spoke and hub-as-spoke) to the hub
-	// 2. ManifestWork creation in hub-as-spoke namespace and namespace creation validation
-	// 3. Prevention of feature gate modifications during active operation
-	// 4. Spoke removal with proper deregistration from hub
-	// 5. ManagedCluster and namespace deletion validation
-	// 6. Automatic ManifestWork cleanup when FleetConfig resource is deleted
+	// 2. Addon configuration on hub and installation on spoke
+	// 3. ManifestWork creation in hub-as-spoke namespace and namespace creation validation
+	// 4. Prevention of feature gate modifications during active operation
+	// 5. Addon update and propagation
+	// 6. Spoke removal with proper deregistration from hub
+	// 7. ManagedCluster and namespace deletion validation
+	// 8. Automatic ManifestWork cleanup when FleetConfig resource is deleted
 	Context("deploy and teardown FleetConfig with ResourceCleanup feature gate enabled", func() {
 
 		It("should join the spoke and hub-as-spoke clusters to the hub", func() {
@@ -71,6 +73,10 @@ var _ = Describe("fleetconfig", Label("fleetconfig"), Ordered, func() {
 			By("cloning the FleetConfig resource for further scenarios")
 			err := utils.CloneFleetConfig(fc, fcClone)
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should verify addons configured on the hub and enabled on the spoke", func() {
+			ensureAddonCreated(tc, 0)
 		})
 
 		It("should verify spoke cluster annotations", func() {
@@ -109,6 +115,11 @@ var _ = Describe("fleetconfig", Label("fleetconfig"), Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			patchFeatureGates := "DefaultClusterSet=true,ManifestWorkReplicaSet=true,ResourceCleanup=false"
 			Expect(utils.UpdateFleetConfigFeatureGates(tc.ctx, tc.kClient, fc, patchFeatureGates)).ToNot(Succeed())
+		})
+
+		It("should update an addon and make sure its propagated to the spoke", func() {
+			updateAddon(tc, fc)
+			ensureAddonCreated(tc, 1)
 		})
 
 		It("should remove a spoke from the hub", func() {
@@ -168,11 +179,14 @@ var _ = Describe("fleetconfig", Label("fleetconfig"), Ordered, func() {
 					conditions[i] = c.Condition
 				}
 				if err = utils.AssertConditions(conditions, map[string]metav1.ConditionStatus{
-					v1alpha1.FleetConfigHubInitialized:                     metav1.ConditionTrue,
-					v1alpha1.FleetConfigCleanupFailed:                      metav1.ConditionFalse,
-					fmt.Sprintf("spoke-cluster-%s-joined", hubAsSpokeName): metav1.ConditionTrue,
-					fmt.Sprintf("spoke-cluster-%s-joined", spokeName):      metav1.ConditionTrue,
-					fmt.Sprintf("spoke-cluster-%s-unjoined", spokeName):    metav1.ConditionTrue,
+					v1alpha1.FleetConfigHubInitialized:                         metav1.ConditionTrue,
+					v1alpha1.FleetConfigCleanupFailed:                          metav1.ConditionFalse,
+					v1alpha1.FleetConfigAddonsConfigured:                       metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-joined", hubAsSpokeName):     metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-joined", spokeName):          metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-addons-enabled", spokeName):  metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-unjoined", spokeName):        metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-addons-disabled", spokeName): metav1.ConditionTrue,
 				}); err != nil {
 					utils.WarnError(err, "Spoke does not have expected condition")
 					return err
@@ -197,11 +211,14 @@ var _ = Describe("fleetconfig", Label("fleetconfig"), Ordered, func() {
 					conditions[i] = c.Condition
 				}
 				if err := utils.AssertConditions(conditions, map[string]metav1.ConditionStatus{
-					v1alpha1.FleetConfigHubInitialized:                     metav1.ConditionTrue,
-					v1alpha1.FleetConfigCleanupFailed:                      metav1.ConditionTrue,
-					fmt.Sprintf("spoke-cluster-%s-joined", hubAsSpokeName): metav1.ConditionTrue,
-					fmt.Sprintf("spoke-cluster-%s-joined", spokeName):      metav1.ConditionTrue,
-					fmt.Sprintf("spoke-cluster-%s-unjoined", spokeName):    metav1.ConditionTrue,
+					v1alpha1.FleetConfigHubInitialized:                         metav1.ConditionTrue,
+					v1alpha1.FleetConfigCleanupFailed:                          metav1.ConditionTrue,
+					v1alpha1.FleetConfigAddonsConfigured:                       metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-joined", hubAsSpokeName):     metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-joined", spokeName):          metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-addons-enabled", spokeName):  metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-unjoined", spokeName):        metav1.ConditionTrue,
+					fmt.Sprintf("spoke-cluster-%s-addons-disabled", spokeName): metav1.ConditionTrue,
 				}); err != nil {
 					utils.WarnError(err, "FleetConfig deletion not blocked")
 					return err

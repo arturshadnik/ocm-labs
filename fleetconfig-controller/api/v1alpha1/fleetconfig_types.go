@@ -392,13 +392,20 @@ func (s *Spoke) GetPurgeKlusterletOperator() bool {
 
 // JoinType returns a status condition type indicating that a particular Spoke cluster has joined the Hub.
 func (s *Spoke) JoinType() string {
-	return fmt.Sprintf("spoke-cluster-%s-joined", s.conditionName())
+	baseMsg := "spoke-cluster-%s-joined"
+	return fmt.Sprintf(baseMsg, s.conditionName(maxConditionNameLen(baseMsg)))
 }
 
-func (s *Spoke) conditionName() string {
+// AddonEnableType returns a status condition type indicating that a particular Spoke cluster's addons have been disabled.
+func (s *Spoke) AddonEnableType() string {
+	baseMsg := "spoke-cluster-%s-addons-enabled"
+	return fmt.Sprintf(baseMsg, s.conditionName(maxConditionNameLen(baseMsg)))
+}
+
+func (s *Spoke) conditionName(c int) string {
 	name := s.Name
-	if len(name) > 42 {
-		name = name[:42] // account for extra 21 chars in the condition type (max. total of 63)
+	if len(name) > c {
+		name = name[:c] // account for extra chars in the condition type (max. total of 63)
 	}
 	return name
 }
@@ -431,6 +438,11 @@ type JoinedSpoke struct {
 	// +kubebuilder:default:=true
 	// +optional
 	PurgeKlusterletOperator bool `json:"purgeKlusterletOperator,omitempty"`
+
+	// EnabledAddons is the list of addons that are currently enabled for the cluster.
+	// +kubebuilder:default:={}
+	// +optional
+	EnabledAddons []string `json:"enabledAddons,omitempty"`
 }
 
 // GetName returns the name of the joined spoke cluster.
@@ -450,13 +462,20 @@ func (j *JoinedSpoke) GetPurgeKlusterletOperator() bool {
 
 // UnjoinType returns a status condition type indicating that a particular Spoke cluster has been removed from the Hub.
 func (j *JoinedSpoke) UnjoinType() string {
-	return fmt.Sprintf("spoke-cluster-%s-unjoined", j.conditionName())
+	baseMsg := "spoke-cluster-%s-unjoined"
+	return fmt.Sprintf(baseMsg, j.conditionName(maxConditionNameLen(baseMsg)))
 }
 
-func (j *JoinedSpoke) conditionName() string {
+// AddonDisableType returns a status condition type indicating that a particular Spoke cluster's addons have been disabled.
+func (j *JoinedSpoke) AddonDisableType() string {
+	baseMsg := "spoke-cluster-%s-addons-disabled"
+	return fmt.Sprintf(baseMsg, j.conditionName(maxConditionNameLen(baseMsg)))
+}
+
+func (j *JoinedSpoke) conditionName(c int) string {
 	name := j.Name
-	if len(name) > 40 {
-		name = name[:40] // account for extra 23 chars in the condition type (max. total of 63)
+	if len(name) > c {
+		name = name[:c] // account for extra chars in the condition type (max. total of 63)
 	}
 	return name
 }
@@ -655,4 +674,31 @@ type FleetConfigList struct {
 
 func init() {
 	SchemeBuilder.Register(&FleetConfig{}, &FleetConfigList{})
+}
+
+func maxConditionNameLen(base string) int {
+	maxLen := 316 // a metav1.Condition.Type type can be at most 316 chars long
+	return maxLen - (len(base) - 2)
+}
+
+// IsUnjoined returns true if a spoke cluster was successfully joined and then successfully unjoined, and the unjoined timestamp is after the joined timestamp.
+// Returns false in all other cases.
+func (m *FleetConfig) IsUnjoined(spoke Spoke, joinedSpoke JoinedSpoke) bool {
+	joinedC := m.GetCondition(spoke.JoinType())
+	if joinedC == nil {
+		return false
+	}
+	unjoinedC := m.GetCondition(joinedSpoke.UnjoinType())
+	if unjoinedC == nil {
+		return false
+	}
+	if unjoinedC.Status != metav1.ConditionTrue {
+		return false
+	}
+	// at this point, unjoined is known to be true. if joined is not true, cluster has not been successfully rejoined
+	if joinedC.Status != metav1.ConditionTrue {
+		return true
+	}
+	// if both exist and are true, compare timestamps
+	return unjoinedC.LastTransitionTime.After(joinedC.LastTransitionTime.Time)
 }

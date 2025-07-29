@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	operatorv1 "open-cluster-management.io/api/operator/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -30,7 +31,10 @@ import (
 
 var csrSuffixPattern = regexp.MustCompile(`-[a-zA-Z0-9]{5}$`)
 
-const amwExistsError = "you should manually clean them, uninstall kluster will cause those works out of control."
+const (
+	amwExistsError      = "you should manually clean them, uninstall kluster will cause those works out of control."
+	managedClusterAddOn = "ManagedClusterAddOn"
+)
 
 // handleSpokes manages Spoke cluster join and upgrade operations
 func handleSpokes(ctx context.Context, kClient client.Client, fc *v1alpha1.FleetConfig) error {
@@ -64,7 +68,8 @@ func handleSpokes(ctx context.Context, kClient client.Client, fc *v1alpha1.Fleet
 		}
 	}
 
-	for _, spoke := range fc.Spec.Spokes {
+	allEnabledAddons := make([][]string, len(fc.Spec.Spokes))
+	for i, spoke := range fc.Spec.Spokes {
 		logger.V(0).Info("handleSpokes: reconciling spoke cluster", "name", spoke.Name)
 
 		// check if the spoke has already been joined to the hub
@@ -158,10 +163,26 @@ func handleSpokes(ctx context.Context, kClient client.Client, fc *v1alpha1.Fleet
 				return fmt.Errorf("failed to upgrade spoke cluster %s: %w", spoke.Name, err)
 			}
 		}
+
+		enabledAddons, err := handleSpokeAddons(ctx, spoke, fc)
+		allEnabledAddons[i] = enabledAddons
+		if err != nil {
+			msg := fmt.Sprintf("failed to enable addons for spoke cluster %s: %s", spoke.Name, err.Error())
+			fc.SetConditions(true, v1alpha1.NewCondition(
+				msg, spoke.AddonEnableType(), metav1.ConditionFalse, metav1.ConditionTrue,
+			))
+			continue
+		}
+
+		if len(enabledAddons) > 0 {
+			fc.SetConditions(true, v1alpha1.NewCondition(
+				"AddonsEnabled", spoke.AddonEnableType(), metav1.ConditionTrue, metav1.ConditionTrue,
+			))
+		}
 	}
 
 	// Only spokes which are joined, are eligible to be unjoined
-	for _, spoke := range fc.Spec.Spokes {
+	for i, spoke := range fc.Spec.Spokes {
 		joinedCondition := fc.GetCondition(spoke.JoinType())
 		if joinedCondition == nil || joinedCondition.Status != metav1.ConditionTrue {
 			continue
@@ -170,6 +191,7 @@ func handleSpokes(ctx context.Context, kClient client.Client, fc *v1alpha1.Fleet
 			Name:                    spoke.Name,
 			Kubeconfig:              spoke.Kubeconfig,
 			PurgeKlusterletOperator: spoke.Klusterlet.PurgeOperator,
+			EnabledAddons:           allEnabledAddons[i],
 		}
 		joinedSpokes = append(joinedSpokes, js)
 	}
@@ -530,7 +552,6 @@ func deregisterSpoke(ctx context.Context, kClient client.Client, hubKubeconfig [
 	if err != nil {
 		return err
 	}
-
 	// skip clean up if the ManagedCluster resource is not found or if any manifestWorks exist
 	managedCluster, err := clusterC.ClusterV1().ManagedClusters().Get(ctx, spoke.Name, metav1.GetOptions{})
 	if kerrs.IsNotFound(err) {
@@ -543,12 +564,27 @@ func deregisterSpoke(ctx context.Context, kClient client.Client, hubKubeconfig [
 	if err != nil {
 		return fmt.Errorf("failed to list manifestWorks for managedCluster %s: %w", managedCluster.Name, err)
 	}
-	if len(manifestWorks.Items) > 0 {
+
+	// check that the number of manifestWorks is the same as the number of addons enabled for that spoke
+	if len(manifestWorks.Items) > 0 && !allOwnersAddOns(manifestWorks.Items) {
 		msg := fmt.Sprintf("Found manifestWorks for ManagedCluster %s; cannot unjoin spoke cluster while it has active ManifestWorks", managedCluster.Name)
 		logger.Info(msg)
 		return errors.New(msg)
+
 	}
 
+	// remove addons only after confirming that the cluster can be unjoined - this avoids leaving dangling resources that may rely on the addon
+	if err := handleAddonDisable(ctx, spoke.Name, spoke.EnabledAddons); err != nil {
+		fc.SetConditions(true, v1alpha1.NewCondition(
+			"AddonsDisabled", spoke.AddonDisableType(), metav1.ConditionFalse, metav1.ConditionTrue,
+		))
+		return err
+	}
+	if len(spoke.EnabledAddons) > 0 {
+		fc.SetConditions(true, v1alpha1.NewCondition(
+			"AddonsDisabled", spoke.AddonDisableType(), metav1.ConditionTrue, metav1.ConditionTrue,
+		))
+	}
 	// unjoin spoke
 	if err := unjoinSpoke(ctx, kClient, fc, spoke); err != nil {
 		return err
@@ -580,4 +616,15 @@ func deregisterSpoke(ctx context.Context, kClient client.Client, hubKubeconfig [
 	}
 
 	return nil
+}
+
+func allOwnersAddOns(mws []workv1.ManifestWork) bool {
+	for _, m := range mws {
+		if !slices.ContainsFunc(m.OwnerReferences, func(or metav1.OwnerReference) bool {
+			return or.Kind == managedClusterAddOn
+		}) {
+			return false
+		}
+	}
+	return true
 }
